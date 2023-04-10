@@ -41,6 +41,64 @@ resource "azurerm_subnet" "core_shared" {
   address_prefixes     = [local.core_shared_address_space]
 }
 
+resource "azurerm_subnet" "databricks_host" {
+  name                 = "subnet-dbks-host-${local.naming_suffix}"
+  resource_group_name  = azurerm_resource_group.core.name
+  virtual_network_name = azurerm_virtual_network.core.name
+  address_prefixes     = [local.databricks_host_address_space]
+
+  delegation {
+    name = "dbks-host-vnet-integration"
+
+    service_delegation {
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+      ]
+      name = "Microsoft.Databricks/workspaces"
+    }
+  }
+}
+
+resource "azurerm_subnet" "databricks_container" {
+  name                 = "subnet-dbks-container-${local.naming_suffix}"
+  resource_group_name  = azurerm_resource_group.core.name
+  virtual_network_name = azurerm_virtual_network.core.name
+  address_prefixes     = [local.databricks_container_address_space]
+
+  delegation {
+    name = "dbks-container-vnet-integration"
+
+    service_delegation {
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+      ]
+      name = "Microsoft.Databricks/workspaces"
+    }
+  }
+}
+
+resource "azurerm_subnet" "serve_webapps" {
+  name                                          = "subnet-serve-webapps-${local.naming_suffix}"
+  resource_group_name                           = azurerm_resource_group.core.name
+  virtual_network_name                          = azurerm_virtual_network.core.name
+  private_endpoint_network_policies_enabled     = false
+  private_link_service_network_policies_enabled = true
+  address_prefixes                              = [local.serve_webapps_address_space]
+
+  delegation {
+    name = "web-app-vnet-integration"
+
+    service_delegation {
+      name    = "Microsoft.Web/serverFarms"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
+
 resource "azurerm_private_dns_zone" "created_zones" {
   for_each            = var.private_dns_zones_rg == null ? local.required_private_dns_zones : {}
   name                = each.value
@@ -82,7 +140,7 @@ resource "azurerm_private_endpoint" "blob" {
   tags                = var.tags
 
   private_dns_zone_group {
-    name = "private-dns-zone-group-kblob-${local.naming_suffix}"
+    name = "private-dns-zone-group-blob-${local.naming_suffix}"
     private_dns_zone_ids = [
       var.private_dns_zones_rg == null
       ? azurerm_private_dns_zone.created_zones["blob"].id
@@ -94,8 +152,15 @@ resource "azurerm_private_endpoint" "blob" {
     name                           = "private-service-connection-blob-${local.naming_suffix}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_storage_account.core.id
-    subresource_names              = ["Blob"]
+    subresource_names              = ["blob"]
   }
+
+  # Wait for all subnet operations to avoid operation conflicts
+  depends_on = [
+    azurerm_subnet.core_shared,
+    azurerm_subnet.databricks_host,
+    azurerm_subnet.databricks_container
+  ]
 }
 
 
@@ -121,6 +186,13 @@ resource "azurerm_private_endpoint" "keyvault" {
     private_connection_resource_id = azurerm_key_vault.core.id
     subresource_names              = ["Vault"]
   }
+
+  # Wait for all subnet operations to avoid operation conflicts
+  depends_on = [
+    azurerm_subnet.core_shared,
+    azurerm_subnet.databricks_host,
+    azurerm_subnet.databricks_container
+  ]
 }
 
 resource "azurerm_network_security_group" "core" {

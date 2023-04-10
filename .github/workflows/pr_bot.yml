@@ -139,7 +139,7 @@ jobs:
           status: "completed"
           conclusion: "success"
 
-  destroy_pr_env:  # Remove the resource groups
+  destroy_pr_env:  # Destroy all resources deployed by PR
     needs: [pr_comment]
     if: |
       (needs.pr_comment.outputs.command == 'destroy') ||
@@ -149,7 +149,7 @@ jobs:
     with:
       suffix_override: flwr-${{ needs.pr_comment.outputs.prRefId }}
       environment: infra-test
-      command: ${{ needs.pr_comment.outputs.command }}
+      command: ${{ needs.pr_comment.outputs.makeCommand }}
       sha: ${{ needs.pr_comment.outputs.prHeadSha }}
     secrets: inherit
 
@@ -188,7 +188,7 @@ jobs:
   summary:
     name: Summary
     needs: [pr_comment, run_test]
-    if: always()
+    if: always() && needs.run_test.result != 'skipped' # Run even on test failure
     runs-on: ubuntu-latest
     environment: infra-test
     steps:

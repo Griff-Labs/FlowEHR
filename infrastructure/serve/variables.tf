@@ -44,12 +44,12 @@ variable "core_subnet_id" {
   type = string
 }
 
-variable "serve_webapps_address_space" {
-  type = string
-}
-
 variable "tf_in_automation" {
   type = bool
+}
+
+variable "deployer_ip" {
+  type = string
 }
 
 variable "accesses_real_data" {
